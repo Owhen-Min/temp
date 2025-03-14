@@ -6,10 +6,11 @@ function App() {
   const [tokenData, setTokenData] = useState(null)
   const [error, setError] = useState(null)
   const [recentlyPlayed, setRecentlyPlayed] = useState(null)
+  const [savedTrackIds, setSavedTrackIds] = useState<string[]>([])
   
   // 스포티파이 로그인 함수 (Implicit Grant Flow 사용)
   const handleSpotifyLogin = () => {
-    const CLIENT_ID = '#여기';
+    const CLIENT_ID = '여기에 id를 입력해주세요.';
     const REDIRECT_URI = 'http://localhost:5173/callback';
     const STATE = generateRandomString(16);
     const SCOPE = 'user-read-private user-read-email user-read-recently-played';
@@ -152,6 +153,7 @@ function App() {
         <div className="track-name">{track.name}</div>
         <div className="artist-name">{track.artists.map(artist => artist.name).join(', ')}</div>
         <div className="album-name">{track.album.name}</div>
+        <div className="track-id">{track.id}</div>
       </div>
     </div>
   );
@@ -346,17 +348,60 @@ function App() {
     );
   };
 
+  // 트랙 ID 저장 함수 추가
+  const handleSaveAllTrackIds = () => {
+    if (!recentlyPlayed?.items) return;
+    
+    const trackIds = recentlyPlayed.items.map(item => item.track.id);
+    setSavedTrackIds(trackIds);
+    
+    // 로컬 스토리지에 저장 (선택사항)
+    localStorage.setItem('savedTrackIds', JSON.stringify(trackIds));
+    
+    alert(`${trackIds.length}개의 트랙 ID가 저장되었습니다.`);
+  };
+
+  // CSV 다운로드 함수 추가
+  const handleDownloadTrackIds = () => {
+    if (!recentlyPlayed?.items) return;
+    
+    // CSV 데이터 생성
+    const trackIds = recentlyPlayed.items.map(item => item.track.id);
+    const csvContent = "track_id\n" + trackIds.join("\n");
+    
+    // Blob 생성 및 다운로드
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", "spotify_track_ids.csv");
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="app-container">
       <h1>스포티파이 로그인</h1>
       
       {/* 멀티라인 그래프 추가 */}
-      {isLoggedIn && <MultiLineGraph />}
+      {/* isLoggedIn && <MultiLineGraph /> */}
       
       {/* 최근 재생 목록 표시 */}
       {recentlyPlayed && (
         <div className="recently-played">
-          <h2>최근 재생한 곡</h2>
+          <div className="header-actions">
+            <h2>최근 재생한 곡</h2>
+            <button 
+              onClick={handleDownloadTrackIds}
+              className="download-csv-btn"
+            >
+              트랙 ID 다운로드 (CSV)
+            </button>
+          </div>
           <div className="tracks-container">
             {recentlyPlayed.items.map((item, index) => (
               <TrackItem key={index} track={item.track} />

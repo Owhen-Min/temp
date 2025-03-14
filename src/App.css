@@ -102,3 +102,25 @@
   border-radius: 3px;
   transition: opacity 0.2s;
 }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.save-tracks-btn {
+  padding: 8px 16px;
+  background-color: #1DB954;
+  color: white;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.3s ease;
+}
+
+.save-tracks-btn:hover {
+  background-color: #1ed760;
+}
