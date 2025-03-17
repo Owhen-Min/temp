@@ -8,20 +8,20 @@ function App() {
   const [recentlyPlayed, setRecentlyPlayed] = useState(null)
   const [savedTrackIds, setSavedTrackIds] = useState<string[]>([])
   
-  // 스포티파이 로그인 함수 (Implicit Grant Flow 사용)
+  // 스포티파이 로그인 함수 (Authorization Code Flow 사용)
   const handleSpotifyLogin = () => {
     const CLIENT_ID = '여기에 id를 입력해주세요.';
-    const REDIRECT_URI = 'http://localhost:5173/callback';
+    const REDIRECT_URI = 'http://localhost:5173/verify'; // verify 페이지로 리다이렉트
     const STATE = generateRandomString(16);
     const SCOPE = 'user-read-private user-read-email user-read-recently-played';
     
     // 상태를 로컬 스토리지에 저장
     localStorage.setItem('spotify_auth_state', STATE);
     
-    // 스포티파이 인증 URL로 리다이렉트 (response_type을 token으로 변경)
+    // 스포티파이 인증 URL로 리다이렉트
     window.location.href = 'https://accounts.spotify.com/authorize?' + 
       new URLSearchParams({
-        response_type: 'token', // code 대신 token 사용
+        response_type: 'code',
         client_id: CLIENT_ID,
         scope: SCOPE,
         redirect_uri: REDIRECT_URI,
@@ -38,6 +38,44 @@ function App() {
       text += possible.charAt(Math.floor(Math.random() * possible.length));
     }
     return text;
+  };
+  
+  // 액세스 토큰 요청 함수 (verify 페이지에서 호출됨)
+  const getAccessToken = async (code: string) => {
+    try {
+      // 백엔드 API로 인증 코드 전송
+      const response = await fetch('http://localhost:8888/api/spotify/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code })
+      });
+      
+      if (!response.ok) {
+        throw new Error('토큰 요청에 실패했습니다');
+      }
+      
+      const data = await response.json();
+      console.log('토큰 응답:', data);
+      
+      // 토큰 정보 저장
+      setTokenData(data);
+      setIsLoggedIn(true);
+      
+      // 사용자 정보 가져오기
+      fetchUserProfile(data.access_token);
+      
+      // 최근 재생 목록 가져오기
+      fetchRecentlyPlayed(data.access_token);
+      
+      // 메인 페이지로 리다이렉트
+      window.location.href = 'http://localhost:5173/callback';
+      
+    } catch (err) {
+      console.error('토큰 요청 오류:', err);
+      setError(err.message);
+    }
   };
   
   // 최근 재생 목록 가져오기
@@ -62,55 +100,50 @@ function App() {
     }
   };
   
-  // 콜백 처리 (해시 파라미터에서 토큰 추출)
+  // URL 쿼리 파라미터 추출 함수
+  const getQueryParams = () => {
+    const queryParams: Record<string, string> = {};
+    const query = window.location.search.substring(1);
+    
+    if (!query) return null;
+    
+    const pairs = query.split('&');
+    for (let i = 0; i < pairs.length; i++) {
+      const pair = pairs[i].split('=');
+      queryParams[pair[0]] = decodeURIComponent(pair[1] || '');
+    }
+    
+    return queryParams;
+  };
+  
+  // 콜백 처리 (verify 페이지에서 리다이렉트된 후 실행)
   useEffect(() => {
-    // URL 해시에서 토큰 정보 추출
-    const getHashParams = () => {
-      const hashParams: Record<string, string> = {};
-      const hash = window.location.hash.substring(1);
-      
-      if (!hash) return null;
-      
-      const params = hash.split('&');
-      for (let i = 0; i < params.length; i++) {
-        const pair = params[i].split('=');
-        hashParams[pair[0]] = decodeURIComponent(pair[1]);
-      }
-      
-      return hashParams;
-    };
+    // URL에서 인증 코드 확인
+    const params = getQueryParams();
     
-    // URL 파라미터 처리
-    const params = getHashParams();
-    const storedState = localStorage.getItem('spotify_auth_state');
-    
-    if (params) {
-      if (params.error) {
-        setError(`인증 오류: ${params.error}`);
-      } else if (params.state !== storedState) {
+    // 인증 코드가 있으면 처리
+    if (params && params.code) {
+      // 상태 검증
+      const storedState = localStorage.getItem('spotify_auth_state');
+      
+      if (params.state && params.state !== storedState) {
         setError('상태 불일치 오류가 발생했습니다');
-      } else if (params.access_token) {
-        // 토큰 정보 저장
-        setTokenData({
-          access_token: params.access_token,
-          token_type: params.token_type,
-          expires_in: params.expires_in,
-          state: params.state
-        });
-        setIsLoggedIn(true);
-        
-        // 사용자 정보 가져오기
-        fetchUserProfile(params.access_token);
-        
-        // 최근 재생 목록 가져오기
-        fetchRecentlyPlayed(params.access_token);
-        
-        // 상태 정보 삭제
-        localStorage.removeItem('spotify_auth_state');
-        
-        // URL에서 해시 제거 (선택 사항)
-        window.history.replaceState(null, '', window.location.pathname);
+        return;
       }
+      
+      // 인증 코드로 액세스 토큰 요청
+      getAccessToken(params.code);
+      
+      // 상태 정보 삭제
+      localStorage.removeItem('spotify_auth_state');
+      
+      // URL에서 쿼리 파라미터 제거 (선택 사항)
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    
+    // 에러 파라미터 확인
+    if (params && params.error) {
+      setError(`인증 오류: ${params.error}`);
     }
   }, []);
   
